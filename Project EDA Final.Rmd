@@ -1,0 +1,853 @@
+---
+title: "IDMP Project EDA"
+author: "Dhruvilsinh Jhala"
+date: "4/10/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# install.packages("osmdata")
+# install.packages("patchwork")
+# install.packages("maps")
+# install.packages("here")
+```
+
+```{r}
+library("readxl")
+library (dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+library(plyr)
+library(ggmap)
+library(RColorBrewer)
+library(patchwork)
+library(here)
+library(maps)
+library(osmdata)
+```
+
+
+
+```{r}
+library("readxl")
+redeye <- read_excel("FINAL 2019-2022 Preprocess Data.xlsx")
+
+```
+
+########################### PENDING
+
+```{r}
+
+myDate = as.POSIXct(redeye$`Request Creation Date`)
+redeye$`Month` <- format(myDate,"%m")
+redeye$`Year` <- format(myDate,"%y")
+
+redeye$`Month` <-  as.double(redeye$`Month`)
+
+redeye$sem = ""
+
+for(i in 1:nrow(redeye)){
+  #print(i)
+   if(redeye$`Month`[i] < 5){
+     redeye$sem[i] = "Spring"
+   }
+  else if(redeye$`Month`[i] < 9 & redeye$`Month`[i] > 4){
+    redeye$sem[i] = "Summer"
+  }
+  else if(redeye$`Month`[i] > 8){
+    redeye$sem[i] = "Fall"
+  }
+}
+
+
+
+
+
+
+
+library("lubridate")
+
+redeye$weekday <- wday(redeye$`Request Creation Date`, label=TRUE)
+
+redeye$weekday1 <- wday(redeye$`Request Creation Date`, week_start=1)
+
+d2 <- redeye[,c("Request Creation Time Hour",  "Request Status", "weekday", "weekday1")]
+
+#d2$`Coded Hour` <- as.double(d2$`Coded Hour`)
+
+
+d2$`Request Creation Time Hour` <- as.double(d2$`Request Creation Time Hour`)
+
+d2$weekday <- as.character(d2$weekday)
+
+#d2$`Time from request creation to planned pickup` <- as.double(d2$`Time from request creation to planned pickup`) 
+#d2$`Ride Distance` <- as.double(d2$`Ride Distance`) 
+
+for(i in 1:nrow(d2)){
+  if(d2$`Request Status`[i] != "Completed"){
+    d2$`Request Status`[i] <- 0
+  }
+  else{
+    d2$`Request Status`[i] <- 1
+  }
+}
+  
+d2$`Request Status` <- as.double(d2$`Request Status`)
+d2
+```
+
+```{r}
+#pdf(file="Poly Regression.pdf")
+
+ggplot(data = d2, mapping = aes(x=`Request Creation Time Hour`, y=`Request Status`)) +
+  stat_smooth(method = "lm",
+              formula = y ~ poly(x, 5),
+              se = FALSE, color = "red")+
+  labs(x="Time", y="Status" )+
+  ggtitle("Chances of Completing a Ride Depending on Hour")+
+  scale_x_continuous(breaks = seq(0, 23, by = 1))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))
+  #theme_dark()+
+  #theme(plot.background = element_rect(fill = "black"))
+  
+#dev.off()
+```
+
+```{r}
+
+count1 <- redeye%>%
+  group_by(`Request Status`)%>%
+  tally()
+
+count1$percent <- (count1$n * 100) / sum(count1$n)
+
+count1$percent <- as.double(count1$percent)
+count1$percent <- format(round(count1$percent, 1), nsmall = 1)
+
+
+#pdf(file="PIE Chart.pdf")
+
+
+count1$percent <- as.double(count1$percent)
+count1 <- count1 %>% 
+  arrange(desc(`Request Status`)) %>% 
+  mutate(y_pos = cumsum(percent)-0.5*percent)
+
+count1 %>% ggplot(aes(x="",percent, fill=`Request Status`)) + 
+  geom_bar(width=1,stat="identity",color="white",alpha=.5) + 
+  coord_polar("y", start=0)+
+  geom_text(aes(y = y_pos, label = paste0(percent,"%")), color = "black", size = 3.5)+
+  theme_void()+
+  theme(legend.text=element_text(size=10))
+
+#dev.off()
+
+
+#mycols <- c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF")
+
+# ggplot(count1, aes(x = "", y = n, fill = `Request Status`)) +
+#   geom_bar(width = 1, stat = "identity", color = "white") +
+#   coord_polar("y", start = 0)+
+#   geom_text(aes(label = n), color = "white")+
+#   scale_fill_manual(values = mycols) +
+#   theme_void()
+
+# ggplot(data = d2, aes(x = Hour))+ 
+#   geom_point(stat = "count")
+# 
+```
+
+
+```{r}
+#pdf(file="EDA3.pdf")
+
+redeye %>%
+  ggplot( aes(x=Month, group=`Request Status`, color=`Request Status`)) +
+  geom_line(stat = "count", lwd=1)+
+  labs(x = "Time (Hour)",y="Count", title="Trend Request Status through-out the years (2019-2022)")+
+  scale_x_continuous(breaks = seq(1, 24, by = 1))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+  theme(text = element_text(size = 12))+
+  theme(plot.title = element_text(hjust = 0.5),
+        # Remove panel border
+  panel.border = element_blank(),  
+  # Remove panel grid lines
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  # Remove panel background
+  panel.background = element_blank(),
+  # Add axis line
+  axis.line = element_line(colour = "black")) +
+scale_color_manual(values=c('#FF0000','#AE0000', '#960000', '#620101','#390000', '#2B0101', '#000000'))
+
+#dev.off()
+```
+
+
+
+
+###################################3
+
+
+```{r}
+
+library("readxl")
+oneday <- read_excel("Red Eye Data 8th March.xlsx")
+
+bos_bb <- c(
+  left  = -71.136287,
+  bottom = 42.309835,
+  right = -71.047052,
+  top = 42.370835
+)
+
+boston_stamen <- get_stamenmap(
+  bbox = bos_bb,
+  zoom = 13,
+   maptype = "toner-lite"
+)
+boston_stamen
+
+```
+
+```{r}
+
+neupoint <- data.frame(`Destination Lng`  = c(-71.08840),
+                       `Destination Lat` = c(42.33872))
+
+
+#pdf(file="EDA4.pdf")
+
+ggplot(oneday, aes(x=`Destination Lng`, y=`Destination Lat`)) + 
+  geom_point()+
+  geom_point(data=neupoint,  aes(x=`Destination.Lng`, y=`Destination.Lat`), 
+             fill="green", shape=23, size = 5, alpha=100)+
+  labs(title = "Destination Location Points for (8th March 2022)")+
+  theme(plot.title = element_text(hjust = 0.5)) 
+#dev.off()
+
+#pdf(file="EDA5.pdf")
+
+ggplot(oneday, aes(x= `Origin Lng` , y=`Origin Lat`)) + 
+  geom_point()+
+  geom_point(data=neupoint,  aes(x=`Destination.Lng`, y=`Destination.Lat`), 
+             fill="green", shape=23, size = 5, alpha=100)+
+  labs(title = "Pickup Location Points for (8th March 2022)")
+  theme(plot.title = element_text(hjust = 0.5)) 
+#dev.off()
+```
+
+
+```{r}
+library(ggplot2)
+
+
+#pdf(file="EDA6.pdf")
+
+ggmap(boston_stamen)+
+  geom_point(data=redeye,  aes(x=`Destination Lng`, y=`Destination Lat`), 
+             fill="red", shape=23, alpha=0.5)+
+  geom_point(data=neupoint,  aes(x=`Destination.Lng`, y=`Destination.Lat`), 
+             fill="green", shape=23, size = 5, alpha=100)+
+  scale_fill_gradientn(colours=rev(brewer.pal(20, "Spectral")))+
+  theme_bw()+
+  labs(title="Destination points of RedEye (2019-2022)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+  theme(text = element_text(size = 12))
+
+#dev.off()
+```
+
+
+
+```{r}
+#pdf(file="EDA7.pdf")
+
+ggmap(boston_stamen)+
+  geom_point(data=oneday,  aes(x=`Destination Lng`, y=`Destination Lat`), 
+             fill="red", shape=23, alpha=0.5)+
+  stat_density2d(data=oneday,  aes(x=`Destination Lng`, y=`Destination Lat`, 
+                                     fill=..level.., alpha=..level..), geom="polygon")+
+  scale_fill_gradientn(colours=rev(brewer.pal(20, "Spectral")))+
+  theme_bw()+
+  labs(title="Heatmap of Destination Areas by RedEye")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))
+
+#dev.off()
+
+```
+
+
+######################################
+
+```{r}
+
+#pdf(file="EDA8.pdf")
+
+
+redeye$`Time from request creation to planned pickup` <- as.double(redeye$`Time from request creation to planned pickup`)
+
+redeye$`Request Creation Time Hour` <- as.character(redeye$`Request Creation Time Hour`)
+
+
+redeye %>%
+  filter(`Request Creation Date` == '2022-02-08' & `Request Status` == 'Completed')%>%
+  ggplot(aes(x=`Request Creation Time Hour`, y=`Time from request creation to planned pickup`, fill = `Request Creation Time Hour`)) +
+  geom_boxplot(show.legend = FALSE, fill="dark red") +
+  labs(fill = "Hour", x = "Time (Hour)",y="Wait Time")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text = element_text(size = 12))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), panel.background = element_blank(),
+        axis.line = element_line(colour = "black"))
+
+
+
+#dev.off()
+```
+
+
+```{r}
+library(ggplot2)
+theme_set(theme_classic())
+
+
+# redeye%>%
+#   filter(redeye$sem == 'Fall')%>%
+#   ggplot(data=redeye)+
+#   geom_density(aes(x=Month, fill=factor(sem)), alpha=0.8) + 
+#     labs(title="Density plot", 
+#          subtitle="",
+#          caption="",
+#          x="Month",
+#          fill="Semester")
+
+```
+
+
+
+
+
+
+```{r}
+
+#pdf(file="EDA9.pdf")
+
+
+
+redeye %>%
+  ggplot(aes(x=weekday, group=`Request Status`, fill=`Request Status`)) +
+  #geom_line(stat = "count", lwd=1)+
+  geom_bar(stat = "count")+
+  labs(x = "Week",y="Count", title="Weekday vs RedEye Request Status")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(text = element_text(size = 12))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))
+  
+
+
+
+#dev.off()
+
+```
+
+```{r}
+
+ggplot(redeye, aes(x=`sem`, fill = `Request Status`)) +
+  geom_bar(stat = "count")
+  labs(title="Semester wise Density of RedEye requests")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(text = element_text(size = 12))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+  scale_color_manual(values=c('#FF0000','#AE0000', '#960000', '#620101','#390000', '#2B0101', '#000000'))
+
+
+```
+
+
+```{r}
+library(ggplot2)
+
+#pdf(file="EDA10.pdf")
+
+ggplot(redeye, aes(x=`sem`, fill = sem)) +
+  geom_density(alpha=0.7)+
+  labs(title="Semester wise Density of RedEye requests")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(text = element_text(size = 12))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))
+
+
+
+#dev.off()
+
+```
+
+
+
+```{r}
+#pdf(file="EDA11.pdf")
+
+redeye$Year <- as.double(redeye$Year)
+
+redeye %>%
+  ggplot() + 
+  scale_fill_brewer(palette = "Spectral")+
+  geom_bar(aes(x=Year, fill=`Request Status`), 
+           binwidth = .1, 
+           col="black", 
+           size=0.1) +
+  labs(title="Year wise Request Status Distribution")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE))+
+  theme(text = element_text(size = 12))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))
+
+
+
+#dev.off()
+
+```
+
+
+```{r}
+#pdf(file="EDA12.pdf")
+
+redeye %>%
+  filter(redeye$sem == "Fall")%>%
+  ggplot(aes(x=Year)) + scale_fill_brewer(palette = "Spectral")+
+  geom_bar(aes(fill=`Request Status`), 
+           binwidth = .1, 
+           col="black", 
+           size=0.1) +
+  labs(title="COVID Effect on RedEye Requests for Fall Sem")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(text = element_text(size = 12))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))
+
+
+
+#dev.off()
+
+```
+
+############## HYPOTHESIS
+
+```{r}
+#redeye$weekday_num <- redeye$weekday
+#redeye$weekday_num <- factor(redeye$weekday)
+
+oneday1 <- oneday
+
+for(i in 1:nrow(oneday1)){
+   if(oneday1$`Destination Lng`[i]> -71.09 & oneday1$`Destination Lat`[i] < 42.34)
+     {oneday1$groups[i] = "G1"}
+   if(oneday1$`Destination Lng`[i]> -71.09 & oneday1$`Destination Lat`[i] > 42.34)
+   {oneday1$groups[i] = "G2"}
+   if(oneday1$`Destination Lng`[i]< -71.09 & oneday1$`Destination Lat`[i] < 42.34)
+   {oneday1$groups[i] = "G3"}
+   if(oneday1$`Destination Lng`[i]< -71.09 & oneday1$`Destination Lat`[i] > 42.34)
+   {oneday1$groups[i] = "G4"}
+}
+
+
+theme_black = function(base_size = 12, base_family = "") {
+ 
+  theme_grey(base_size = base_size, base_family = base_family) %+replace%
+ 
+    theme(
+      # Specify axis options
+      axis.line = element_blank(),  
+      axis.text.x = element_text(size = base_size*0.8, color = "white", lineheight = 0.9),  
+      axis.text.y = element_text(size = base_size*0.8, color = "white", lineheight = 0.9),  
+      axis.ticks = element_line(color = "white", size  =  0.2),  
+      axis.title.x = element_text(size = base_size, color = "white", margin = margin(0, 10, 0, 0)),  
+      axis.title.y = element_text(size = base_size, color = "white", angle = 90, margin = margin(0, 10, 0, 0)),  
+      axis.ticks.length = unit(0.3, "lines"),   
+      # Specify legend options
+      legend.background = element_rect(color = NA, fill = "black"),  
+      legend.key = element_rect(color = "white",  fill = "black"),  
+      legend.key.size = unit(1.2, "lines"),  
+      legend.key.height = NULL,  
+      legend.key.width = NULL,      
+      legend.text = element_text(size = base_size*0.8, color = "white"),  
+      legend.title = element_text(size = base_size*0.8, face = "bold", hjust = 0, color = "white"),  
+      legend.position = "right",  
+      legend.text.align = NULL,  
+      legend.title.align = NULL,  
+      legend.direction = "vertical",  
+      legend.box = NULL, 
+      # Specify panel options
+      panel.background = element_rect(fill = "black", color  =  NA),  
+      panel.border = element_rect(fill = NA, color = "white"),  
+      panel.grid.major = element_line(color = "grey35"),  
+      panel.grid.minor = element_line(color = "grey20"),  
+      panel.margin = unit(0.5, "lines"),   
+      # Specify facetting options
+      strip.background = element_rect(fill = "grey30", color = "grey10"),  
+      strip.text.x = element_text(size = base_size*0.8, color = "white"),  
+      strip.text.y = element_text(size = base_size*0.8, color = "white",angle = -90),  
+      # Specify plot options
+      plot.background = element_rect(color = "black", fill = "black"),  
+      plot.title = element_text(size = base_size*1.2, color = "white"),  
+      plot.margin = unit(rep(1, 4), "lines")
+ 
+    )
+ 
+}
+
+#pdf(file="EDA13_1.pdf")
+
+ggplot(oneday1, aes(x=`Destination Lat`, y=`Destination Lng`, color = groups)) +
+  geom_point()+
+  theme(text = element_text(size = 12))+
+  theme(legend.text=element_text(size=10))+
+  theme(axis.text.x = element_text(size=12), axis.text.y = element_text(size=12))+
+  theme(plot.title = element_text(hjust = 0.5),
+  panel.border = element_blank(),  
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  panel.background = element_blank())+
+  #axis.line = element_line(colour = "black")) +
+  theme_black()
+
+#dev.off()
+```
+
+```{r}
+table(oneday1$`Request Status`)
+```
+
+If number of 
+
+```{r}
+
+for(i in 1:nrow(oneday1)){
+  if(oneday1$`Request Status`[i] != "Completed"){
+    oneday1$`Request Status`[i] <- "Completed"
+  }
+  else{
+    oneday1$`Request Status`[i] <- "Not Completed"
+  }
+}
+
+
+oneday2 <- oneday1%>%
+  group_by(`Request Creation Time Hour`)%>%
+  tally()
+
+oneday3 <- aggregate(oneday1$`Request Creation Time Hour`, 
+          by=list(oneday1$`Request Status`, oneday1$`Request Creation Time Hour`, oneday1$groups), FUN=length)
+
+oneday3 <- pivot_wider(oneday3, names_from = Group.3, values_from = x)
+
+names(oneday3)[names(oneday3) == 'Group.1'] <- 'Status'
+names(oneday3)[names(oneday3) == 'Group.2'] <- 'Hour'
+
+oneday3
+
+```
+
+Let us consider that the number of Redeye car's to be 6 in service at 7pm - 8pm.
+cars - 8
+requests - 190 (87 Completed, 103 Not Completed) - 45.78%
+
+Our Plan:
+G1- 12
+G2- 15
+G3- 131
+G4- 32
+
+Considering max capacity- 12
+1xG1 - 12
+1xG2 - 12
+6xG3 - 72
+1xG4 - 12
+Total completed - 108 (24.13% more)
+
+
+##########################################################
+
+```{r}
+oneday11 <- redeye %>%
+  filter(`Request Creation Date` == '2021-11-08')
+
+
+for(i in 1:nrow(oneday11)){
+   if(oneday11$`Destination Lng`[i]> -71.09 & oneday11$`Destination Lat`[i] < 42.34)
+     {oneday11$groups[i] = "G1"}
+   if(oneday11$`Destination Lng`[i]> -71.09 & oneday11$`Destination Lat`[i] > 42.34)
+   {oneday11$groups[i] = "G2"}
+   if(oneday11$`Destination Lng`[i]< -71.09 & oneday11$`Destination Lat`[i] < 42.34)
+   {oneday11$groups[i] = "G3"}
+   if(oneday11$`Destination Lng`[i]< -71.09 & oneday11$`Destination Lat`[i] > 42.34)
+   {oneday11$groups[i] = "G4"}
+}
+
+
+for(i in 1:nrow(oneday11)){
+  if(oneday11$`Request Status`[i] != "Completed"){
+    oneday11$`Request Status`[i] <- "Completed"
+  }
+  else{
+    oneday11$`Request Status`[i] <- "Not Completed"
+  }
+}
+
+
+oneday22 <- oneday11%>%
+  group_by(`Request Creation Time Hour`)%>%
+  tally()
+
+oneday33 <- aggregate(oneday11$`Request Creation Time Hour`,
+          by=list(oneday11$`Request Status`, oneday11$`Request Creation Time Hour`, oneday11$groups), FUN=length)
+
+oneday33 <- pivot_wider(oneday33, names_from = Group.3, values_from = x)
+
+names(oneday33)[names(oneday33) == 'Group.1'] <- 'Status'
+names(oneday33)[names(oneday33) == 'Group.2'] <- 'Hour'
+
+oneday33
+
+```
+
+
+<!-- Let us consider that the number of Redeye car's to be 6 in service at 8pm - 9pm. -->
+<!-- cars - 8 -->
+<!-- requests - 181 (103 Completed, 78 Not Completed) - 75.72% -->
+
+<!-- Our Plan: -->
+
+<!-- Requests -->
+<!-- G1- 21 -->
+<!-- G2- 11 -->
+<!-- G3- 117 -->
+<!-- G4- 32 -->
+
+<!-- Considering max capacity- 11 -->
+<!-- 1xG1 - 12 -->
+<!-- 1xG2 - 12 -->
+<!-- 6xG3 - 72 -->
+<!-- 1xG4 - 12 -->
+<!-- Total completed - 108 (24.13% more) -->
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+oneday%>%
+  group_by(`Request Creation Time Hour`)%>%
+  tally()
+```
+
+```{r}
+oneday11%>%
+  group_by(oneday11$`Request Creation Time Hour`)%>%
+  tally()
+```
+
+
+
+
+
+
+
+```{r}
+
+oneday100 <- aggregate(oneday1$`Request Status`, by=list( oneday1$groups, oneday1$`Request Status`), FUN=length)
+```
+
+
+
+
+
+
+```{r}
+#Count of students taking ride living away from campus vs near
+library ("geosphere")
+  
+# # declaring two points 
+# point1 <- c(82.13452, 23.430502)
+# point2 <- c(43.23245,51.12356)
+#   
+# point_mat <- matrix(c(point1, point2), ncol =2 )  
+#   
+# print ("Original Matrix")
+# print (point_mat)
+#   
+# # haversine distance
+# print ("Haversine Distance")
+# distHaversine(point_mat)   
+# 
+# library(geosphere)
+# lon1 = 82.13452
+# lat1 = 23.430502
+# lon2 = 43.23245
+# lat2 = 51.12356
+# d = distm(c(lon1, lat1), c(lon2, lat2), fun = distHaversine)
+
+for(i in 1:nrow(oneday)){
+  oneday$Geospatial_Distance[i] <- distm(c(-71.08840, 42.33872), 
+                                      c(oneday$`Destination Lng`[i], oneday$`Destination Lat`[i]), 
+                                      fun = distHaversine)
+  print(i)
+}
+
+oneday1 <- data.frame(oneday$Geospatial_Distance, oneday$`Ride Distance`, oneday$`Request Creation Time Hour`, oneday$`Request Status`)
+#oneday1 <- na.omit(oneday1)
+oneday1$oneday..Ride.Distance. <- as.double(oneday1$oneday..Ride.Distance.)
+oneday1$oneday..Request.Status. <- as.factor(oneday1$oneday..Request.Status.)
+
+
+#pdf(file="EDA13.pdf")
+
+oneday1 %>%
+  ggplot(aes(x=oneday1$oneday.Geospatial_Distance, y = oneday1$oneday..Ride.Distance.)) +
+  geom_point()+
+  geom_smooth()+
+  #coord_cartesian(xlim =  c(0, 5000))+
+  labs(x = "Geospatial Distance",y="Ride Distance", title="Trend of Geospatial Distance VS Ride Distance (8th March)")+
+  #scale_y_continuous(breaks = seq(1, 8, by = 1))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+#dev.off()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#######################################3
+
+
+```{r}
+# install.packages("doSNOW")
+# install.packages("MUCflights")
+# install.packages("geosphere")
+
+# library(doSNOW)
+# library(MUCflights)
+# library(ggmap)
+# library(png)
+# library(dplyr)
+# library(geosphere)
+# library(data.table)
+
+```
+
+
+```{r}
+#mycenter <- c( -71.09 , 42.34 )
+
+# plot the map
+# p0 <-  ggmap(boston_stamen)
+# 
+# # adding dots to map
+# p1 <- p0 + 
+#   geom_point(x = oneday$`Destination Lng`[5], 
+#              y =  oneday$`Destination Lat`[5], 
+#              shape=21, fill="yellow", size=2) +
+#   geom_point(x = oneday$`Destination Lng`[6], 
+#              y =  oneday$`Destination Lat`[6], 
+#              shape=21, fill="yellow", size=2) 
+#     
+# p1
+```
+
+
+```{r}
+# p3 <- p1 +
+#    geom_point(x = oneday$`Destination Lng`[1], 
+#              y =  oneday$`Destination Lat`[1], 
+#              shape=21, fill="yellow", size=2) +
+#   geom_point(x = oneday$`Destination Lng`[2], 
+#              y =  oneday$`Destination Lat`[2], 
+#              shape=21, fill="yellow", size=2)
+#   
+# p3
+# 
+# 
+# p4 <- p3 + geom_segment(x = oneday$`Destination Lng`[1],
+#                         y = oneday$`Destination Lat`[1], 
+#                         xend = oneday$`Destination Lng`[2], 
+#                         yend = oneday$`Destination Lat`[2], 
+#                         col='red', alpha=0.5)
+# p4
+```
+
+
+```{r}
+# get_paths <- function(x, idx, ...) {
+#   gcInt <- function(x, x1, x2) {
+#     x <- gcIntermediate(x[x1, ], x[x2, ], ...)
+#     if (is.list(x)) {
+#       x <- x %>% purrr::map2(c(x1, x1 + 0.5), ~data.frame(.x, .y)) %>% 
+#         bind_rows %>% setnames(c("long", "lat", "group"))
+#     } else x <- data.frame(x, x1) %>% setnames(c("long", "lat", "group"))
+#     x
+#   }
+#   purrr::map(setdiff(1:length(x), idx), ~gcInt(x, .x, idx)) %>% bind_rows
+# }
+# 
+# allpath <- data.frame()
+# for ( i in 2: nrow(oneday) ){
+#   
+#   # We need two point at a time.
+#   test <- oneday[  (1:2)+i-2  ,c("Longitude", "Latitude",  "Date", "City")]
+#   colnames(test)[1:2] <- c("lon", "lat")
+#   
+#   # genderate the spatial points of two cities
+#   p <- SpatialPoints(cbind(test$lon, test$lat), proj4string = CRS("+proj=longlat +datum=WGS84"))
+#   idx1 <- 2  # great circles from coords in all other rows to coords in this row
+#   
+#   # get the path between two cities
+#   paths1 <- get_paths(p, idx1, addStartEnd = TRUE)
+#   
+#   # calculate the distance between two cities
+#   paths1$truedis <- rep(distm(p[1,], p[2,], fun = distHaversine), 52)/1000
+#   
+#   allpath <- rbind(allpath, paths1)
+# }
+```
+
+
+
+
+
